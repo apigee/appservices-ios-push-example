@@ -5,44 +5,70 @@
 
 UGClient * usergridClient;
 
-NSString * baseURL = @"http://10.0.1.20:8080";
-NSString * orgName = @"test-organization";
-NSString * appName = @"test-app";
-NSString * userName = @"scott";
-NSString * password = @"password";
+// The following values must be changed to the organization, application, and notifier
+// to match the names that you've created on the App Services platform. Be sure that
+// the application you use allows Guest access (eg. sandbox) - or that you have the device
+// log in to App Services.
+// Also ensure that you update the Bundle Identifier and Provisioning Profile in the project Build Settings.
+// You will need to set the "Code Signing Identity" options for "Debug" to your Provisioning Profile.
 
+
+NSString * orgName = @"scottganyo";
+NSString * appName = @"pushtest";
+NSString * notifier = @"apple";
+
+NSString * baseURL = @"https://api.usergrid.com";
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
 {
+    NSLog(@"setting up app services connection");
     // connect and login to App Services
     usergridClient = [[UGClient alloc]initWithOrganizationId: orgName withApplicationID: appName baseURL: baseURL];
     [usergridClient setLogging:true]; //comment out to remove debug output from the console window
-    
-    [usergridClient logInUser: userName password: password];
+
+    // it's not necessary to explicitly login to App Services if the Guest role allows access
+//    NSLog(@"logging in user");
+//    [usergridClient logInUser: userName password: password];
 
     // Register for Push Notifications with Apple
+    NSLog(@"registering for remove notifications");
     [application registerForRemoteNotificationTypes: UIRemoteNotificationTypeBadge |
                                                      UIRemoteNotificationTypeAlert |
                                                      UIRemoteNotificationTypeSound];
+    NSLog(@"done launching");
     return YES;
 }
 
 - (void)application:(UIApplication *)application didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)newDeviceToken
 {
-    // register token with App Services
-    UGClientResponse *response = [usergridClient setDevicePushToken: newDeviceToken];
+    // register device token with App Services (will create the Device entity if it doesn't exist)
+    NSLog(@"registering token with app services");
+    UGClientResponse *response = [usergridClient setDevicePushToken: newDeviceToken forNotifier: notifier];
+    
+    // you could use this if you log in as an app services user to associate the Device to your User
+//    if (response.transactionState == kUGClientResponseSuccess) {
+//        response = [self connectEntities: @"users" connectorID: @"me" type: @"devices" connecteeID: deviceId];
+//    }
     
     if (response.transactionState != kUGClientResponseSuccess) {
         [self alert: response.rawResponse title: @"Error"];
     }
 }
 
+- (void)application:(UIApplication*)application didFailToRegisterForRemoteNotificationsWithError:(NSError*)error
+{
+    [self alert: error.localizedDescription title: @"Error"];
+}
+
 - (void)sendMyselfAPushNotification:(NSString *)message
 {
+    NSString *deviceId = [UGClient getUniqueDeviceID];
+    NSString *thisDevice = [@"devices/" stringByAppendingString: deviceId];
+    
     UGClientResponse *response = [usergridClient pushAlert: message
                                                  withSound: @"chime"
-                                                        to: @"users/me"
-                                             usingNotifier: @"apple"];
+                                                        to: thisDevice
+                                             usingNotifier: notifier];
     
     if (response.transactionState != kUGClientResponseSuccess) {
         [self alert: response.rawResponse title: @"Error"];
@@ -63,6 +89,7 @@ NSString * password = @"password";
 
 - (void)alert:(NSString *)message title:(NSString *)title
 {
+    NSLog(@"displaying alert. title: %@, message: %@", title, message);
     UIAlertView *alertView = [[UIAlertView alloc]
                               initWithTitle: title
                               message: message
